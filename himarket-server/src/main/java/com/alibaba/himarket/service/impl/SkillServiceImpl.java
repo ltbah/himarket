@@ -6,6 +6,7 @@ import com.alibaba.himarket.core.exception.ErrorCode;
 import com.alibaba.himarket.core.security.ContextHolder;
 import com.alibaba.himarket.core.skill.FileTreeBuilder;
 import com.alibaba.himarket.core.skill.SkillMdBuilder;
+import com.alibaba.himarket.core.skill.SkillZipParser;
 import com.alibaba.himarket.core.utils.IdGenerator;
 import com.alibaba.himarket.dto.converter.OutputConverter;
 import com.alibaba.himarket.dto.params.skill.CreateSkillDraftParam;
@@ -96,15 +97,32 @@ public class SkillServiceImpl implements SkillService {
                 throw new BusinessException(
                         ErrorCode.INVALID_REQUEST, "AIRegistry skill config not found");
             }
-            String skillName =
+            String parsedSkillName = SkillZipParser.parseSkillName(zipBytes);
+            AiRegistryUploadBinding binding =
+                    resolveAiRegistryUploadBinding(product, config, parsedSkillName);
+
+            String uploadedSkillName =
                     aiRegistrySkillService.uploadFromZip(
                             config.getAiRegistryId(),
                             config.getNamespace(),
                             zipBytes,
                             file.getOriginalFilename(),
                             true);
-            if (Strings.isBlank(config.getSkillName())) {
-                config.setSkillName(skillName);
+            if (!Objects.equals(uploadedSkillName, parsedSkillName)) {
+                log.warn(
+                        "AIRegistry returned unexpected Skill name, productId={},"
+                                + " airegistryId={}, namespace={}, parsedSkillName={},"
+                                + " uploadedSkillName={}",
+                        productId,
+                        config.getAiRegistryId(),
+                        config.getNamespace(),
+                        parsedSkillName,
+                        uploadedSkillName);
+                throw new BusinessException(
+                        ErrorCode.INVALID_REQUEST, "AIRegistry returned unexpected Skill name");
+            }
+            if (binding.updateLocalSkillName()) {
+                config.setSkillName(uploadedSkillName);
                 config.setVersionInfos(null);
                 config.setLatestVersion(null);
             }
@@ -144,6 +162,69 @@ public class SkillServiceImpl implements SkillService {
         return product.getFeature().getSkillConfig();
     }
 
+    private AiRegistryUploadBinding resolveAiRegistryUploadBinding(
+            Product product, SkillConfig config, String skillName) {
+        if (Strings.isBlank(config.getSkillName())) {
+            ensureAiRegistrySkillNameAvailable(product, config, skillName);
+            return new AiRegistryUploadBinding(true);
+        }
+
+        boolean sharedCurrentSkill =
+                findOtherAiRegistrySkillProduct(product, config, config.getSkillName()) != null;
+        if (!sharedCurrentSkill) {
+            if (!Objects.equals(config.getSkillName(), skillName)) {
+                throw new BusinessException(
+                        ErrorCode.CONFLICT,
+                        "Skill package name must match current bound Skill: "
+                                + config.getSkillName());
+            }
+            return new AiRegistryUploadBinding(false);
+        }
+
+        if (Objects.equals(config.getSkillName(), skillName)) {
+            throw new BusinessException(
+                    ErrorCode.CONFLICT,
+                    "Shared AIRegistry Skill cannot be overwritten by this product: " + skillName);
+        }
+        ensureAiRegistrySkillNameAvailable(product, config, skillName);
+        return new AiRegistryUploadBinding(true);
+    }
+
+    private void ensureAiRegistrySkillNameAvailable(
+            Product product, SkillConfig config, String skillName) {
+        Product referencedProduct = findOtherAiRegistrySkillProduct(product, config, skillName);
+        if (referencedProduct != null) {
+            throw new BusinessException(
+                    ErrorCode.CONFLICT,
+                    String.format(
+                            "Skill `%s` is already bound to product `%s` in this AIRegistry"
+                                    + " namespace",
+                            skillName, referencedProduct.getName()));
+        }
+    }
+
+    private Product findOtherAiRegistrySkillProduct(
+            Product product, SkillConfig config, String skillName) {
+        return productRepository.findAllByType(ProductType.AGENT_SKILL).stream()
+                .filter(item -> !Objects.equals(item.getProductId(), product.getProductId()))
+                .filter(item -> matchesAiRegistrySkill(item, config, skillName))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private boolean matchesAiRegistrySkill(Product product, SkillConfig config, String skillName) {
+        if (product.getFeature() == null || product.getFeature().getSkillConfig() == null) {
+            return false;
+        }
+        SkillConfig other = product.getFeature().getSkillConfig();
+        return other.getRegistryType() == SkillRegistryType.AIREGISTRY
+                && Objects.equals(other.getAiRegistryId(), config.getAiRegistryId())
+                && Objects.equals(other.getNamespace(), config.getNamespace())
+                && Objects.equals(other.getSkillName(), skillName);
+    }
+
+    private record AiRegistryUploadBinding(boolean updateLocalSkillName) {}
+
     @Override
     public void deleteSkill(String productId) {
         deleteSkill(productId, false);
@@ -155,19 +236,29 @@ public class SkillServiceImpl implements SkillService {
         SkillConfig config = product.getFeature().getSkillConfig();
         if (config != null && config.getRegistryType() == SkillRegistryType.AIREGISTRY) {
             if (Strings.isNotBlank(config.getSkillName())) {
-                try {
-                    aiRegistrySkillService.deleteSkill(
-                            config.getAiRegistryId(), config.getNamespace(), config.getSkillName());
-                } catch (RuntimeException e) {
-                    if (!ignoreError) {
-                        throw e;
-                    }
-                    log.warn(
-                            "Failed to delete source AIRegistry Skill, ignoring error,"
-                                    + " productId={}, skillName={}",
+                if (findOtherAiRegistrySkillProduct(product, config, config.getSkillName())
+                        != null) {
+                    log.info(
+                            "Skip deleting shared AIRegistry Skill, productId={}, skillName={}",
                             productId,
-                            config.getSkillName(),
-                            e);
+                            config.getSkillName());
+                } else {
+                    try {
+                        aiRegistrySkillService.deleteSkill(
+                                config.getAiRegistryId(),
+                                config.getNamespace(),
+                                config.getSkillName());
+                    } catch (RuntimeException e) {
+                        if (!ignoreError) {
+                            throw e;
+                        }
+                        log.warn(
+                                "Failed to delete source AIRegistry Skill, ignoring error,"
+                                        + " productId={}, skillName={}",
+                                productId,
+                                config.getSkillName(),
+                                e);
+                    }
                 }
                 config.setSkillName(null);
                 config.setVersionInfos(null);

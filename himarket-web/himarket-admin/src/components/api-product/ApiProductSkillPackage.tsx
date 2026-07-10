@@ -78,6 +78,15 @@ interface ApiProductSkillPackageProps {
   handleRefresh: () => void;
 }
 
+function getApiErrorMessage(error: unknown, fallback: string) {
+  const responseMessage = (error as { response?: { data?: { message?: unknown } } } | undefined)
+    ?.response?.data?.message;
+  if (typeof responseMessage === 'string' && responseMessage.trim()) {
+    return responseMessage.trim();
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
 export function ApiProductSkillPackage({
   apiProduct,
   handleRefresh,
@@ -962,7 +971,7 @@ export function ApiProductSkillPackage({
       onUploadSuccess?.();
     } catch (error: unknown) {
       message.destroy();
-      const errMsg = error instanceof Error ? error.message : t('product.package.uploadFailed');
+      const errMsg = getApiErrorMessage(error, t('product.package.uploadFailed'));
       message.error(errMsg);
       throw error;
     } finally {
