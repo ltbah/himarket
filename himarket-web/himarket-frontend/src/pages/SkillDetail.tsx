@@ -623,6 +623,7 @@ function SkillDetail() {
             <ProductDetailTabs
               activeKey={activeTab}
               cardClassName="flex flex-col"
+              fillHeight
               items={[
                 {
                   children: (
@@ -684,7 +685,6 @@ function SkillDetail() {
               ]}
               onChange={handleTabChange}
               style={{ height: 'calc(100vh - 280px)', minHeight: 520 }}
-              tabsClassName="flex min-h-0 flex-1 flex-col [&_.ant-tabs-content-holder]:min-h-0 [&_.ant-tabs-content-holder]:flex-1 [&_.ant-tabs-content-holder]:overflow-hidden [&_.ant-tabs-content]:h-full [&_.ant-tabs-tabpane]:h-full"
             />
           </div>
 

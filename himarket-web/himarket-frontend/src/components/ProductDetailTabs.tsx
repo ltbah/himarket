@@ -10,16 +10,20 @@ const PRODUCT_DETAIL_TABS_NAV_CLASS =
   '[&_.ant-tabs-nav]:mb-5 [&_.ant-tabs-nav]:px-5 [&_.ant-tabs-tab]:py-4';
 
 const PRODUCT_DETAIL_TABS_CONTENT_CLASS = 'min-w-0 px-5 pb-5';
+const PRODUCT_DETAIL_TABS_FILL_ROOT_CLASS =
+  'flex min-h-0 flex-1 flex-col [&_.ant-tabs-content-holder]:min-h-0 [&_.ant-tabs-content-holder]:flex-1 [&_.ant-tabs-content-holder]:overflow-hidden [&_.ant-tabs-body-holder]:min-h-0 [&_.ant-tabs-body-holder]:flex-1 [&_.ant-tabs-body-holder]:overflow-hidden [&_.ant-tabs-body]:h-full [&_.ant-tabs-content]:h-full [&_.ant-tabs-tabpane]:h-full';
+const PRODUCT_DETAIL_TABS_FILL_CONTENT_CLASS = 'h-full min-h-0';
 
 function classNames(...values: Array<string | undefined>) {
   return values.filter(Boolean).join(' ');
 }
 
-function mergeContentClassName(
+function mergeSemanticClassNames(
   semanticClassNames: TabsProps['classNames'] | undefined,
   contentPadded: boolean,
+  fillHeight: boolean,
 ): TabsProps['classNames'] | undefined {
-  if (!contentPadded) {
+  if (!contentPadded && !fillHeight) {
     return semanticClassNames;
   }
 
@@ -29,14 +33,22 @@ function mergeContentClassName(
 
       return {
         ...resolvedClassNames,
-        content: classNames(PRODUCT_DETAIL_TABS_CONTENT_CLASS, resolvedClassNames.content),
+        content: classNames(
+          contentPadded ? PRODUCT_DETAIL_TABS_CONTENT_CLASS : undefined,
+          fillHeight ? PRODUCT_DETAIL_TABS_FILL_CONTENT_CLASS : undefined,
+          resolvedClassNames.content,
+        ),
       };
     };
   }
 
   return {
     ...semanticClassNames,
-    content: classNames(PRODUCT_DETAIL_TABS_CONTENT_CLASS, semanticClassNames?.content),
+    content: classNames(
+      contentPadded ? PRODUCT_DETAIL_TABS_CONTENT_CLASS : undefined,
+      fillHeight ? PRODUCT_DETAIL_TABS_FILL_CONTENT_CLASS : undefined,
+      semanticClassNames?.content,
+    ),
   };
 }
 
@@ -48,6 +60,7 @@ interface ProductDetailTabLabelProps {
 interface ProductDetailTabsProps extends Omit<TabsProps, 'className' | 'size'> {
   cardClassName?: string;
   contentPadded?: boolean;
+  fillHeight?: boolean;
   style?: CSSProperties;
   tabsClassName?: string;
 }
@@ -65,6 +78,7 @@ export function ProductDetailTabs({
   cardClassName,
   classNames: semanticClassNames,
   contentPadded = true,
+  fillHeight = false,
   style,
   tabsClassName,
   ...tabsProps
@@ -73,8 +87,12 @@ export function ProductDetailTabs({
     <div className={classNames(PRODUCT_DETAIL_TABS_CARD_CLASS, cardClassName)} style={style}>
       <Tabs
         {...tabsProps}
-        className={classNames(PRODUCT_DETAIL_TABS_NAV_CLASS, tabsClassName)}
-        classNames={mergeContentClassName(semanticClassNames, contentPadded)}
+        className={classNames(
+          PRODUCT_DETAIL_TABS_NAV_CLASS,
+          fillHeight ? PRODUCT_DETAIL_TABS_FILL_ROOT_CLASS : undefined,
+          tabsClassName,
+        )}
+        classNames={mergeSemanticClassNames(semanticClassNames, contentPadded, fillHeight)}
         size="large"
       />
     </div>
