@@ -148,7 +148,7 @@ HiMarket NacosServiceImpl
 | Agent 列表 | `NacosServiceImpl` → `aiService.listAgentCards()` | `maintainer-client/ai/AiMaintainerService` | `ai/service/agentspecs/AgentSpecsService` |
 | Worker 上传 | `WorkerServiceImpl` → `agentSpecService.uploadAgentSpecFromZip()` | `maintainer-client/ai/AgentSpecMaintainerService` | `ai/service/agentspecs/AgentSpecsService` |
 | 命名空间列表 | `NacosServiceImpl` → `namingService.getNamespaceList()` | `maintainer-client/naming/NamingMaintainerService` | `core/namespace/NamespaceService` |
-| 下载数同步 | `DownloadCountSyncTask` → `skillService.getSkillMeta()` | `maintainer-client/ai/SkillMaintainerService` | `ai/service/skills/SkillsService` |
+| 列表元数据同步 | `SkillWorkerMetadataSyncTask` → `skillService.listSkills()` | `maintainer-client/ai/SkillMaintainerService` | `ai/service/skills/SkillsService` |
 
 ### 关键 API 模型（共享于 `nacos-api`）
 

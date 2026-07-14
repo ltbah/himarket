@@ -83,12 +83,14 @@ import com.alibaba.himarket.support.product.SkillConfig;
 import com.alibaba.himarket.support.product.WorkerConfig;
 import com.alibaba.himarket.utils.JsonUtil;
 import com.github.benmanes.caffeine.cache.Cache;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -98,6 +100,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.scheduling.annotation.Async;
@@ -247,6 +250,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public PageResult<ProductResult> listProducts(QueryProductParam param, Pageable pageable) {
         if (!contextHolder.isAdministrator()) {
             param.setPortalId(contextHolder.getPortal());
@@ -904,48 +908,12 @@ public class ProductServiceImpl implements ProductService {
             // Fill skill config from feature
             if (product.getFeature() != null && product.getFeature().getSkillConfig() != null) {
                 product.setSkillConfig(product.getFeature().getSkillConfig());
-                fillSkillLatestVersion(product);
             }
 
             // Fill agent spec config from feature
             if (product.getFeature() != null && product.getFeature().getWorkerConfig() != null) {
                 product.setWorkerConfig(product.getFeature().getWorkerConfig());
-                fillWorkerLatestVersion(product);
             }
-        }
-    }
-
-    private void fillSkillLatestVersion(ProductResult product) {
-        try {
-            String latestVersion =
-                    skillService.listVersions(product.getProductId()).stream()
-                            .filter(version -> Boolean.TRUE.equals(version.getIsLatest()))
-                            .map(VersionResult::getVersion)
-                            .findFirst()
-                            .orElse(null);
-            product.getSkillConfig().setLatestVersion(latestVersion);
-        } catch (Exception e) {
-            log.warn(
-                    "Failed to fill Skill latest version, productId={}, errorMessage={}",
-                    product.getProductId(),
-                    e.getMessage());
-        }
-    }
-
-    private void fillWorkerLatestVersion(ProductResult product) {
-        try {
-            String latestVersion =
-                    workerService.listVersions(product.getProductId()).stream()
-                            .filter(version -> Boolean.TRUE.equals(version.getIsLatest()))
-                            .map(VersionResult::getVersion)
-                            .findFirst()
-                            .orElse(null);
-            product.getWorkerConfig().setLatestVersion(latestVersion);
-        } catch (Exception e) {
-            log.warn(
-                    "Failed to fill Worker latest version, productId={}, errorMessage={}",
-                    product.getProductId(),
-                    e.getMessage());
         }
     }
 
@@ -1041,8 +1009,39 @@ public class ProductServiceImpl implements ProductService {
                 predicates.add(cb.not(root.get("productId").in(subquery)));
             }
 
+            if (param.getSortBy() == ProductSortBy.DOWNLOAD_COUNT
+                    && (param.getType() == ProductType.AGENT_SKILL
+                            || param.getType() == ProductType.WORKER)) {
+                applyDownloadCountSort(root, query, cb, param.getType());
+            }
+
             return cb.and(predicates.toArray(new Predicate[0]));
         };
+    }
+
+    private void applyDownloadCountSort(
+            Root<Product> product,
+            CriteriaQuery<?> query,
+            CriteriaBuilder criteriaBuilder,
+            ProductType productType) {
+        if (Long.class.equals(query.getResultType()) || long.class.equals(query.getResultType())) {
+            return;
+        }
+
+        String jsonPath =
+                productType == ProductType.AGENT_SKILL
+                        ? "$.skillConfig.downloadCount"
+                        : "$.workerConfig.downloadCount";
+        Expression<String> extractedValue =
+                criteriaBuilder.function(
+                        "json_extract",
+                        String.class,
+                        product.get("feature"),
+                        criteriaBuilder.literal(jsonPath));
+        Expression<Long> downloadCount =
+                criteriaBuilder.coalesce(extractedValue.as(Long.class), 0L);
+
+        query.orderBy(criteriaBuilder.desc(downloadCount), criteriaBuilder.desc(product.get("id")));
     }
 
     private Specification<ProductSubscription> buildProductSubscriptionSpec(
@@ -1121,56 +1120,19 @@ public class ProductServiceImpl implements ProductService {
         }
     }
 
-    /**
-     * List skill/worker products sorted by download count (descending).
-     * Uses in-memory sorting since downloadCount is stored inside the feature JSON column.
-     */
     private PageResult<ProductResult> listProductsSortedByDownloadCount(
             QueryProductParam param, Pageable pageable) {
-        List<Product> allProducts = productRepository.findAll(buildSpecification(param));
-
-        if (CollectionUtils.isEmpty(allProducts)) {
-            return PageResult.empty(pageable.getPageNumber(), pageable.getPageSize());
-        }
-
-        // Sort by download count descending (null treated as 0)
-        allProducts.sort(
-                Comparator.comparingLong((Product p) -> getDownloadCount(p, param.getType()))
-                        .reversed());
-
-        // Manual pagination
-        int start = (int) pageable.getOffset();
-        int end = Math.min(start + pageable.getPageSize(), allProducts.size());
-        List<Product> pageContent =
-                start < allProducts.size()
-                        ? allProducts.subList(start, end)
-                        : Collections.emptyList();
+        Pageable unsortedPageable =
+                PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
+        Page<Product> page = productRepository.findAll(buildSpecification(param), unsortedPageable);
 
         List<ProductResult> results =
-                pageContent.stream()
-                        .map(product -> new ProductResult().convertFrom(product))
-                        .toList();
+                page.stream().map(product -> new ProductResult().convertFrom(product)).toList();
 
         fillProducts(results);
 
         return PageResult.of(
-                results, pageable.getPageNumber() + 1, pageable.getPageSize(), allProducts.size());
-    }
-
-    private long getDownloadCount(Product product, ProductType type) {
-        ProductFeature feature = product.getFeature();
-        if (feature == null) {
-            return 0L;
-        }
-        if (type == ProductType.AGENT_SKILL) {
-            SkillConfig cfg = feature.getSkillConfig();
-            return cfg != null && cfg.getDownloadCount() != null ? cfg.getDownloadCount() : 0L;
-        }
-        if (type == ProductType.WORKER) {
-            WorkerConfig cfg = feature.getWorkerConfig();
-            return cfg != null ? cfg.getDownloadCount() : 0L;
-        }
-        return 0L;
+                results, page.getNumber() + 1, page.getSize(), page.getTotalElements());
     }
 
     /**

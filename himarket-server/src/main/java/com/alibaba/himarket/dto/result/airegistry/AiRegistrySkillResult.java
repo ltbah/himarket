@@ -40,4 +40,7 @@ public class AiRegistrySkillResult {
 
     @Schema(description = "Download count")
     private Long downloadCount;
+
+    @Schema(description = "Version labeled as latest")
+    private String latestVersion;
 }

@@ -80,7 +80,14 @@ public interface AiRegistrySkillService {
     PageResult<AiRegistrySkillResult> listSkills(
             String aiRegistryId, String namespaceId, int pageNo, int pageSize);
 
-    Map<String, Long> listSkillDownloadCounts(String aiRegistryId, String namespaceId);
+    /**
+     * Lists Skill metadata indexed by Skill name.
+     *
+     * @param aiRegistryId AIRegistry instance ID
+     * @param namespaceId namespace ID
+     * @return Skill metadata indexed by Skill name
+     */
+    Map<String, AiRegistrySkillResult> listSkillMetadata(String aiRegistryId, String namespaceId);
 
     void validateNamespace(String aiRegistryId, String namespaceId);
 }

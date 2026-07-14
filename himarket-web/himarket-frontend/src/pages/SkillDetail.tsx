@@ -739,6 +739,56 @@ function SkillDetail() {
                       </span>
                     </div>
 
+                    {isAiRegistrySkill && (
+                      <div className="mb-3">
+                        <div className="mb-1.5 text-xs font-semibold text-gray-700">
+                          {t('cliCredentialStep')}
+                          <a
+                            className="ml-1 text-colorPrimary hover:text-colorPrimaryHover"
+                            href="https://help.aliyun.com/zh/mse/user-guide/nacos-cli-access-ai-registry-login-credential-configuration-guide?spm=5176.mse-prod.console-base_help.dexternal.66a72675UrvmaY"
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            {t('cliUserDoc')}
+                          </a>
+                        </div>
+                        <div className="relative overflow-hidden rounded-[12px] border border-[#172033] bg-[#111827] py-2.5 pl-3 pr-9">
+                          <Button
+                            aria-label={t('copyCommand')}
+                            className="absolute right-2 top-2 z-10 !h-6 !w-6 !min-w-6 !p-0 !text-gray-400 hover:!text-white [&_.anticon]:!text-xs"
+                            icon={
+                              copiedProfile ? (
+                                <CheckOutlined className="text-green-400" />
+                              ) : (
+                                <CopyOutlined />
+                              )
+                            }
+                            onClick={() => {
+                              copyToClipboard('npx @nacos-group/cli profile edit').then(() => {
+                                setCopiedProfile(true);
+                                setTimeout(() => setCopiedProfile(false), 2000);
+                              });
+                            }}
+                            size="small"
+                            title={t('copyCommand')}
+                            type="text"
+                          />
+                          <code
+                            className="break-all text-[12px] leading-5 text-gray-100"
+                            style={{ fontFamily: "'Menlo', 'Monaco', 'Courier New', monospace" }}
+                          >
+                            npx @nacos-group/cli profile edit
+                          </code>
+                        </div>
+                      </div>
+                    )}
+
+                    {isAiRegistrySkill && (
+                      <div className="mb-2 text-xs font-semibold text-gray-700">
+                        {t('cliDownloadStep')}
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-3">
                       {IDE_OPTIONS.map((ide) => (
                         <button
@@ -779,51 +829,7 @@ function SkillDetail() {
                       />
                     </div>
 
-                    <div className="mt-3 space-y-3">
-                      {isAiRegistrySkill && (
-                        <div>
-                          <div className="mb-1.5 text-xs font-semibold text-gray-700">
-                            {t('cliCredentialStep')}
-                            <a
-                              className="ml-1 text-colorPrimary hover:text-colorPrimaryHover"
-                              href="https://help.aliyun.com/zh/mse/user-guide/nacos-cli-access-ai-registry-login-credential-configuration-guide?spm=5176.mse-prod.console-base_help.dexternal.66a72675UrvmaY"
-                              rel="noreferrer"
-                              target="_blank"
-                            >
-                              {t('cliUserDoc')}
-                            </a>
-                          </div>
-                          <div className="relative overflow-hidden rounded-[12px] border border-[#172033] bg-[#111827] py-2.5 pl-3 pr-9">
-                            <Button
-                              aria-label={t('copyCommand')}
-                              className="absolute right-2 top-2 z-10 !h-6 !w-6 !min-w-6 !p-0 !text-gray-400 hover:!text-white [&_.anticon]:!text-xs"
-                              icon={
-                                copiedProfile ? (
-                                  <CheckOutlined className="text-green-400" />
-                                ) : (
-                                  <CopyOutlined />
-                                )
-                              }
-                              onClick={() => {
-                                copyToClipboard('npx @nacos-group/cli profile edit').then(() => {
-                                  setCopiedProfile(true);
-                                  setTimeout(() => setCopiedProfile(false), 2000);
-                                });
-                              }}
-                              size="small"
-                              title={t('copyCommand')}
-                              type="text"
-                            />
-                            <code
-                              className="break-all text-[12px] leading-5 text-gray-100"
-                              style={{ fontFamily: "'Menlo', 'Monaco', 'Courier New', monospace" }}
-                            >
-                              npx @nacos-group/cli profile edit
-                            </code>
-                          </div>
-                        </div>
-                      )}
-
+                    <div className="mt-3">
                       <div className="relative overflow-hidden rounded-[12px] border border-[#172033] bg-[#111827] py-2.5 pl-3 pr-9">
                         <Button
                           aria-label={t('copyCommand')}

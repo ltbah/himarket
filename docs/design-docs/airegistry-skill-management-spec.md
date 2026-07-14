@@ -354,14 +354,14 @@ private String namespace;
 - `cleanupNacosResources` 改成按产品类型清理远端资源；`AGENT_SKILL` 走 Skill registry operator，`WORKER` 继续走 Nacos Worker 逻辑。
 - `initDefaultFeature` 对 `AGENT_SKILL` 和 `WORKER` 都继续使用默认 Nacos；AIRegistry 只通过产品包管理页的仓库配置切换。
 
-### 5.7 下载量同步
+### 5.7 列表元数据同步
 
-当前 `DownloadCountSyncTask` 会扫描所有 `ProductType.AGENT_SKILL`，只要 `skillConfig.nacosId != null` 就按 Nacos 分组拉取下载量。支持 AIRegistry 后必须调整：
+`SkillWorkerMetadataSyncTask` 会扫描所有 `ProductType.AGENT_SKILL`，按仓库分组拉取列表元数据。支持 AIRegistry 时遵循以下规则：
 
-- `registryType == null` 或 `NACOS`：保持现有 Nacos 同步逻辑。
-- `registryType=AIREGISTRY`：按 `airegistryId + namespace` 分组，通过 AIRegistry `ListSkills` 同步 `downloadCount`。
+- `registryType == null` 或 `NACOS`：按 `nacosId + namespace` 分组，通过 Nacos 列表接口同步 `downloadCount` 和 `latestVersion`。
+- `registryType=AIREGISTRY`：按 `airegistryId + namespace` 分组，通过 AIRegistry `ListSkills` 同步 `downloadCount` 和 `latestVersion`。
 - AIRegistry 单个 Skill 返回的 `downloadCount` 为空时，跳过该 Skill 的本地更新，不把下载量写成 0。
-- `WORKER` 下载量同步保持现有 Nacos 逻辑，不引入 AIRegistry。
+- `WORKER` 列表元数据同步保持 Nacos 逻辑，不引入 AIRegistry。
 
 ### 5.8 批量导入（可选增强）
 
@@ -605,7 +605,7 @@ P0 必测行为：
 4. AIRegistry 来源的 Agent Skill 可以通过现有 `/skills/{productId}/package` 上传 ZIP，返回的 `skillName` 被保存到产品配置。
 5. AIRegistry 来源的 Agent Skill 可以通过现有文件树、文件内容、版本列表、下载接口读取内容。
 6. 原有 Nacos Skill 上传、版本、下载链路不回归。
-8. AIRegistry 来源产品通过 AIRegistry `ListSkills` 同步下载量，不会被 `DownloadCountSyncTask` 当成 Nacos 产品处理。
+8. AIRegistry 来源产品通过 AIRegistry `ListSkills` 同步列表元数据，不会被 `SkillWorkerMetadataSyncTask` 当成 Nacos 产品处理。
 9. AIRegistry 来源产品发布前会校验存在 online 版本，删除产品时会清理 AIRegistry 中的 Skill。
 
 P1 可补行为：
@@ -724,13 +724,13 @@ GREEN：
 RED：
 
 - 写一个现有 Nacos 产品的 API 回归测试：上传、版本列表、下载仍走 Nacos 路径。
-- 写一个定时同步测试：Nacos Skill 产品仍按 Nacos 分组同步下载量，AIRegistry Skill 产品按 `airegistryId + namespace` 分组并调用 AIRegistry `ListSkills` 同步下载量。
+- 写一个定时同步测试：Nacos Skill 产品仍按 Nacos 分组同步列表元数据，AIRegistry Skill 产品按 `airegistryId + namespace` 分组并调用 AIRegistry `ListSkills` 同步列表元数据。
 
 GREEN：
 
 - 修正 operator 抽象引入后的兼容问题。
 - 确认 `registryType == null` 仍按 Nacos 处理。
-- 为 `DownloadCountSyncTask` 增加 AIRegistry 分支，复用 AIRegistry client/operator 的列表能力，不在定时任务里直接散落 POP SDK 细节。
+- 为 `SkillWorkerMetadataSyncTask` 增加 AIRegistry 分支，复用 AIRegistry client/operator 的列表能力，不在定时任务里直接散落 POP SDK 细节。
 
 #### Slice 7：前端工作流
 

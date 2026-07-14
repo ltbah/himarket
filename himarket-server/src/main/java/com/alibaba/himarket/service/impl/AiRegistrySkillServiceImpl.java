@@ -384,15 +384,7 @@ public class AiRegistrySkillServiceImpl implements AiRegistrySkillService {
                 return PageResult.empty(pageNo, pageSize);
             }
             List<AiRegistrySkillResult> items =
-                    data.getPageItems().stream()
-                            .map(
-                                    item ->
-                                            AiRegistrySkillResult.builder()
-                                                    .name(item.getName())
-                                                    .description(item.getDescription())
-                                                    .downloadCount(item.getDownloadCount())
-                                                    .build())
-                            .toList();
+                    data.getPageItems().stream().map(this::toSkillResult).toList();
             long total =
                     data.getTotalCount() == null ? items.size() : data.getTotalCount().longValue();
             return PageResult.of(items, pageNo, pageSize, total);
@@ -402,11 +394,12 @@ public class AiRegistrySkillServiceImpl implements AiRegistrySkillService {
     }
 
     @Override
-    public Map<String, Long> listSkillDownloadCounts(String aiRegistryId, String namespaceId) {
+    public Map<String, AiRegistrySkillResult> listSkillMetadata(
+            String aiRegistryId, String namespaceId) {
         AiRegistryInstance instance = findInstance(aiRegistryId);
         try {
             Client client = buildClient(instance);
-            Map<String, Long> downloadCounts = new HashMap<>();
+            Map<String, AiRegistrySkillResult> skillMetadata = new HashMap<>();
             int pageNo = 1;
             while (true) {
                 ListSkillsResponseBody.ListSkillsResponseBodyData data =
@@ -422,19 +415,28 @@ public class AiRegistrySkillServiceImpl implements AiRegistrySkillService {
                 }
                 for (ListSkillsResponseBody.ListSkillsResponseBodyDataPageItems item :
                         data.getPageItems()) {
-                    if (item.getDownloadCount() != null) {
-                        downloadCounts.putIfAbsent(item.getName(), item.getDownloadCount());
-                    }
+                    skillMetadata.putIfAbsent(item.getName(), toSkillResult(item));
                 }
                 if (data.getPageItems().size() < PAGE_SIZE) {
                     break;
                 }
                 pageNo++;
             }
-            return downloadCounts;
+            return skillMetadata;
         } catch (Exception e) {
-            throw toAiRegistryException("Failed to list AIRegistry Skill download counts", e);
+            throw toAiRegistryException("Failed to list AIRegistry Skill metadata", e);
         }
+    }
+
+    private AiRegistrySkillResult toSkillResult(
+            ListSkillsResponseBody.ListSkillsResponseBodyDataPageItems item) {
+        String latestVersion = item.getLabels() == null ? null : item.getLabels().get("latest");
+        return AiRegistrySkillResult.builder()
+                .name(item.getName())
+                .description(item.getDescription())
+                .downloadCount(item.getDownloadCount())
+                .latestVersion(latestVersion)
+                .build();
     }
 
     @Override
@@ -461,7 +463,7 @@ public class AiRegistrySkillServiceImpl implements AiRegistrySkillService {
                                         ErrorCode.NOT_FOUND, "AiRegistryInstance", aiRegistryId));
     }
 
-    private Client buildClient(AiRegistryInstance instance) throws Exception {
+    Client buildClient(AiRegistryInstance instance) throws Exception {
         Config config =
                 new Config()
                         .setAccessKeyId(instance.getAccessKeyId())
